@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start Django Server",
+			"type": "shell",
+			"command": "D:/Document/Project/Mật mã học/proj/venv_313/Scripts/python.exe",
+			"args": [
+				"manage.py",
+				"runserver",
+				"8000"
+			],
+			"group": "build",
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}
