@@ -183,6 +183,7 @@
                 <button onclick="stopStreaming()" id="stopBtn" disabled>Stop Streaming</button>
                 <button onclick="showEncryptionDemo()" id="demoBtn">🔒 Show Encryption Demo</button>
                 <button onclick="showSessionSecurity()" id="securityBtn" disabled>📊 Show Session Security</button>
+                <button onclick="showWatermarkDemo()" id="watermarkBtn" disabled>🧬 Forensic Watermark Demo</button>
                 <button onclick="showProtectionDemo()" id="protectionBtn">🛡️ Anti-Piracy Demo</button>
                 <button onclick="showJwtSecurityDemo()" id="jwtBtn">🔑 JWT Security Demo</button>
                 <button onclick="clearLogs()" id="clearBtn">Clear Logs</button>
@@ -326,7 +327,7 @@
                     
                     if (data.success) {
                         // Decrypt CEK (simplified)
-                        this.cek = this.decryptCEK(data.encrypted_cek);
+                        this.ek = this.decryptCEK(data.encrypted_cek);
                         this.log('Key exchange completed', { 
                             sessionKey: this.sessionKey.substring(0, 20) + '...',
                             cek: 'Generated successfully'
@@ -445,11 +446,11 @@
                 statusDiv.textContent = message;
                 statusDiv.className = `status ${type}`;
                 statusDiv.style.display = 'block';
-            }
-              updateButtons() {
+            }              updateButtons() {
                 document.getElementById('streamBtn').disabled = this.isStreaming;
                 document.getElementById('stopBtn').disabled = !this.isStreaming;
                 document.getElementById('securityBtn').disabled = !this.sessionId;
+                document.getElementById('watermarkBtn').disabled = !this.sessionId;
                 document.getElementById('demoBtn').disabled = !this.selectedVideoId;
             }
             
@@ -693,7 +694,75 @@
                 }
             }
             
-            // ...existing code...
+            // Show forensic watermarking details
+            async showWatermarkDemo() {
+                if (!this.sessionId) {
+                    this.updateStatus('No active session. Start streaming first.', 'error');
+                    return;
+                }
+                
+                try {
+                    this.log('='.repeat(60), null);
+                    this.log('🧬 FORENSIC WATERMARKING ANALYSIS', null);
+                    this.log('='.repeat(60), null);
+                    
+                    const response = await fetch(`/api/demo/watermark/${this.sessionId}/`);
+                    const data = await response.json();
+                    
+                    if (response.ok && data.forensic_watermarking_demo) {
+                        const demo = data.forensic_watermarking_demo;
+                        
+                        this.log('SESSION INFORMATION:', null);
+                        this.log(`• Session ID: ${demo.session_info.session_id}`, null);
+                        this.log(`• Video: ${demo.session_info.video_title}`, null);
+                        this.log(`• Device: ${demo.session_info.device_fingerprint}`, null);
+                        this.log(`• Created: ${demo.session_info.created_at}`, null);
+                        this.log('-'.repeat(60), null);
+                        
+                        this.log('WATERMARK PAYLOAD:', null);
+                        const payload = demo.watermark_payload.payload;
+                        this.log(`• User Hash: ${payload.user_hash}`, null);
+                        this.log(`• Device ID: ${payload.device_id}`, null);
+                        this.log(`• Session ID: ${payload.session_id}`, null);
+                        this.log(`• Timestamp: ${payload.timestamp}`, null);
+                        this.log(`• Watermark Hash: ${demo.watermark_payload.watermark_hash}`, null);
+                        this.log('-'.repeat(60), null);
+                        
+                        this.log('ANTI-PIRACY BENEFITS:', null);
+                        demo.anti_piracy_benefits.forEach((benefit, index) => {
+                            this.log(`${index + 1}. ${benefit}`, null);
+                        });
+                        this.log('-'.repeat(60), null);
+                        
+                        this.log('TECHNICAL DETAILS:', null);
+                        this.log('• Embedding Methods:', null);
+                        demo.technical_details.embedding_methods.forEach(method => {
+                            this.log(`  - ${method}`, null);
+                        });
+                        this.log('• Security Features:', null);
+                        demo.technical_details.security_features.forEach(feature => {
+                            this.log(`  - ${feature}`, null);
+                        });
+                        this.log('-'.repeat(60), null);
+                        
+                        this.log('DEMO EXPLANATION:', null);
+                        this.log(`Purpose: ${demo.demo_explanation.purpose}`, null);
+                        this.log(`Detection: ${demo.demo_explanation.detection}`, null);
+                        this.log(`Legal Value: ${demo.demo_explanation.legal_value}`, null);
+                        this.log(`Prevention: ${demo.demo_explanation.prevention}`, null);
+                        this.log('='.repeat(60), null);
+                        this.log('🧬 YOUR IDENTITY IS EMBEDDED IN THIS VIDEO STREAM!', null);
+                        this.log('⚖️ This enables tracking and legal action against piracy!', null);
+                        
+                        this.updateStatus('Forensic watermarking analysis completed! Your identity is embedded in the video.', 'success');
+                    } else {
+                        throw new Error(data.error || 'Failed to get watermark demo');
+                    }
+                } catch (error) {
+                    this.log('Failed to show watermark demo', error.message, 'error');
+                    this.updateStatus(`Error: ${error.message}`, 'error');
+                }
+            }
         }
         
         // Initialize the secure streaming system
@@ -721,7 +790,12 @@
         function showSessionSecurity() {
             secureStreaming.showSessionSecurity();
         }
-          function showProtectionDemo() {
+        
+        function showWatermarkDemo() {
+            secureStreaming.showWatermarkDemo();
+        }
+        
+        function showProtectionDemo() {
             secureStreaming.showProtectionDemo();
         }
         

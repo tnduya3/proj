@@ -12,6 +12,7 @@ from cryptography.hazmat.backends import default_backend
 import jwt
 from datetime import datetime, timedelta
 from django.conf import settings
+from .security_utils import ForensicWatermarking
 
 class DiffieHellmanKeyExchange:
     """Handle Diffie-Hellman key exchange for secure communication"""
@@ -103,6 +104,22 @@ class ContentEncryption:
         
         # Return IV + tag + encrypted_chunk
         return iv + encryptor.tag + encrypted_chunk
+    
+    @staticmethod
+    def decrypt_video_chunk(encrypted_data, cek):
+        """Decrypt video chunk with CEK using AES-GCM"""
+        # Extract components
+        iv = encrypted_data[:12]
+        tag = encrypted_data[12:28]
+        encrypted_chunk = encrypted_data[28:]
+        
+        # Create cipher
+        cipher = Cipher(algorithms.AES(cek), modes.GCM(iv, tag), backend=default_backend())
+        decryptor = cipher.decryptor()
+        
+        # Decrypt chunk
+        decrypted_chunk = decryptor.update(encrypted_chunk) + decryptor.finalize()
+        return decrypted_chunk
 
 class DeviceFingerprinting:
     """Handle device fingerprinting and token generation"""
@@ -140,11 +157,61 @@ class DeviceFingerprinting:
             raise ValueError("Invalid token")
 
 class VideoProcessor:
-    """Handle video processing and DASH packaging"""
+    """Handle video processing, DASH packaging, and forensic watermarking"""
     
     @staticmethod
+    def encrypt_video_file_with_watermark(input_path, output_path, cek, user_token, device_fingerprint, session_id):
+        """
+        Encrypt video file with embedded forensic watermark containing user identification
+        
+        Args:
+            input_path (str): Path to original video file
+            output_path (str): Path for encrypted output file
+            cek (bytes): Content Encryption Key
+            user_token (str): User JWT token for watermarking
+            device_fingerprint (str): Device fingerprint hash
+            session_id (str): Streaming session ID
+        """
+        chunk_size = 1024 * 1024  # 1MB chunks
+        
+        # Generate forensic watermark
+        watermark_payload = ForensicWatermarking.generate_watermark_payload(
+            user_token, device_fingerprint, session_id
+        )
+        
+        with open(input_path, 'rb') as infile, open(output_path, 'wb') as outfile:
+            chunk_index = 0
+            
+            while True:
+                chunk = infile.read(chunk_size)
+                if not chunk:
+                    break
+                
+                # Apply forensic watermarking to chunk
+                if chunk_index == 0:
+                    # Embed metadata watermark in first chunk
+                    chunk = ForensicWatermarking.embed_watermark_in_video_metadata(chunk, watermark_payload)
+                
+                # Apply steganographic watermarking (every 10th chunk to avoid detection)
+                if chunk_index % 10 == 0:
+                    chunk = ForensicWatermarking.embed_steganographic_watermark(
+                        chunk, watermark_payload['binary_data'], intensity=1
+                    )
+                
+                # Encrypt the watermarked chunk
+                encrypted_chunk = ContentEncryption.encrypt_video_chunk(chunk, cek)
+                
+                # Write chunk size + encrypted chunk
+                outfile.write(len(encrypted_chunk).to_bytes(4, 'big'))
+                outfile.write(encrypted_chunk)
+                
+                chunk_index += 1
+        
+        return watermark_payload
+
+    @staticmethod
     def encrypt_video_file(input_path, output_path, cek):
-        """Encrypt entire video file with CEK"""
+        """Encrypt entire video file with CEK (legacy method without watermarking)"""
         chunk_size = 1024 * 1024  # 1MB chunks
         
         with open(input_path, 'rb') as infile, open(output_path, 'wb') as outfile:
@@ -158,6 +225,53 @@ class VideoProcessor:
                 outfile.write(len(encrypted_chunk).to_bytes(4, 'big'))
                 outfile.write(encrypted_chunk)
     
+    @staticmethod
+    def decrypt_and_verify_watermark(encrypted_file_path, cek, expected_watermark_hash):
+        """
+        Decrypt video file and verify forensic watermark for piracy detection
+        
+        Args:
+            encrypted_file_path (str): Path to encrypted video file
+            cek (bytes): Content Encryption Key
+            expected_watermark_hash (str): Expected watermark hash for verification
+            
+        Returns:
+            dict: Verification results including watermark status
+        """
+        try:
+            with open(encrypted_file_path, 'rb') as infile:
+                # Read and decrypt first chunk to check watermark
+                chunk_size_bytes = infile.read(4)
+                if len(chunk_size_bytes) < 4:
+                    return {'verified': False, 'error': 'Invalid file format'}
+                
+                chunk_size = int.from_bytes(chunk_size_bytes, 'big')
+                encrypted_chunk = infile.read(chunk_size)
+                
+                # Decrypt first chunk
+                decrypted_chunk = ContentEncryption.decrypt_video_chunk(encrypted_chunk, cek)
+                
+                # Extract watermark from metadata
+                watermark_info = ForensicWatermarking.extract_watermark_from_metadata(decrypted_chunk)
+                
+                if watermark_info['found']:
+                    verification_result = {
+                        'verified': True,
+                        'watermark_hash': watermark_info['watermark_hash'],
+                        'matches_expected': watermark_info['watermark_hash'] == expected_watermark_hash,
+                        'extraction_method': watermark_info['extraction_method']
+                    }
+                else:
+                    verification_result = {
+                        'verified': False,
+                        'error': watermark_info.get('error', 'Watermark not found')
+                    }
+                
+                return verification_result
+                
+        except Exception as e:
+            return {'verified': False, 'error': str(e)}
+
     @staticmethod
     def create_session_hash(session_data):
         """Create hash for session identification"""

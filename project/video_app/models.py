@@ -62,6 +62,9 @@ class StreamingSession(models.Model):
     # Content Encryption Key (CEK)
     encrypted_cek = models.TextField(blank=True)  # CEK encrypted with DH session key
     
+    # Forensic Watermarking
+    watermark_hash = models.CharField(max_length=64, blank=True)  # Hash of embedded watermark
+    
     # Session management
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()

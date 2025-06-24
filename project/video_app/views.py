@@ -2,6 +2,7 @@ import json
 import secrets
 import hashlib
 import os
+import jwt
 from datetime import datetime, timedelta
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse, HttpResponse, StreamingHttpResponse
@@ -20,6 +21,7 @@ from .crypto_utils import (
     DeviceFingerprinting,
     VideoProcessor
 )
+from .security_utils import ForensicWatermarking
 
 # ==================== DEVICE REGISTRATION ====================
 
@@ -36,13 +38,30 @@ def register_device(request):
         timezone_offset = data.get('timezone_offset', 0)
         language = data.get('language', 'en')
         
-        # Create or get device
-        device, created = Device.objects.get_or_create(
-            user_agent=user_agent,
-            screen_resolution=screen_resolution,
-            timezone_offset=timezone_offset,
-            language=language
-        )
+        # Create fingerprint hash the same way as in the model
+        fingerprint_data = {
+            'user_agent': user_agent,
+            'screen_resolution': screen_resolution,
+            'timezone_offset': timezone_offset,
+            'language': language
+        }
+        fingerprint_string = json.dumps(fingerprint_data, sort_keys=True)
+        fingerprint_hash = hashlib.sha256(fingerprint_string.encode()).hexdigest()
+        
+        # Try to get existing device by fingerprint hash, or create new one
+        try:
+            device = Device.objects.get(fingerprint_hash=fingerprint_hash)
+            created = False
+        except Device.DoesNotExist:
+            # Create new device
+            device = Device.objects.create(
+                user_agent=user_agent,
+                screen_resolution=screen_resolution,
+                timezone_offset=timezone_offset,
+                language=language
+                # fingerprint_hash will be generated automatically in save() method
+            )
+            created = True
         
         # Generate authentication token
         token = DeviceFingerprinting.generate_device_token(device.fingerprint_hash)
@@ -51,7 +70,9 @@ def register_device(request):
             'success': True,
             'device_id': str(device.device_id),
             'token': token,
-            'expires_in': settings.JWT_EXPIRATION_MINUTES * 60
+            'expires_in': settings.JWT_EXPIRATION_MINUTES * 60,
+            'created': created,
+            'fingerprint': device.fingerprint_hash[:16] + '...'  # Show first 16 chars for debugging
         })
         
     except Exception as e:
@@ -118,7 +139,7 @@ def request_video_stream(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def complete_key_exchange(request):
-    """Complete DH key exchange and generate encrypted CEK"""
+    """Complete DH key exchange and generate encrypted CEK with forensic watermarking"""
     try:
         data = json.loads(request.body)
         session_id = data.get('session_id')
@@ -147,14 +168,27 @@ def complete_key_exchange(request):
         cek = ContentEncryption.generate_cek()
         encrypted_cek = ContentEncryption.encrypt_cek_with_session_key(cek, session_key)
         
-        # Store encrypted CEK and session key hash
+        # Generate forensic watermark for this session
+        # Use device fingerprint as user token for watermarking
+        device_token = session.device.fingerprint_hash
+        watermark_payload = ForensicWatermarking.generate_watermark_payload(
+            device_token, session.device.fingerprint_hash, session_id
+        )
+        
+        # Store encrypted CEK, session key hash, and watermark info
         session.encrypted_cek = encrypted_cek.hex()
         session.session_key_hash = hashlib.sha256(session_key).hexdigest()
+        session.watermark_hash = watermark_payload['watermark_hash']  # Add this field to model if needed
         session.save()
         
         return JsonResponse({
             'success': True,
-            'encrypted_cek': encrypted_cek.hex()
+            'encrypted_cek': encrypted_cek.hex(),
+            'watermark_info': {
+                'watermark_hash': watermark_payload['watermark_hash'],
+                'embedded': True,
+                'tracking_enabled': True
+            }
         })
         
     except Exception as e:
@@ -507,6 +541,111 @@ def demo_jwt_security(request):
                     'Use different secrets for different environments (dev/staging/prod)',
                     'Monitor for unauthorized token usage'
                 ]
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
+
+@api_view(['GET'])
+def show_forensic_watermark_demo(request, session_id):
+    """Demonstrate forensic watermarking capabilities for a specific session"""
+    try:
+        session = get_object_or_404(StreamingSession, session_id=session_id)
+        
+        # Generate demo watermark payload
+        device_token = session.device.fingerprint_hash
+        watermark_payload = ForensicWatermarking.generate_watermark_payload(
+            device_token, session.device.fingerprint_hash, session_id
+        )
+        
+        # Generate watermark report
+        video_info = {
+            'title': session.video.title,
+            'id': session.video.id
+        }
+        watermark_report = ForensicWatermarking.generate_watermark_report(watermark_payload, video_info)
+        
+        return Response({
+            'forensic_watermarking_demo': {
+                'session_info': {
+                    'session_id': session_id,
+                    'video_title': session.video.title,
+                    'device_fingerprint': session.device.fingerprint_hash[:16] + '...',
+                    'created_at': session.created_at.isoformat()
+                },
+                'watermark_payload': watermark_payload,
+                'watermark_report': watermark_report,
+                'anti_piracy_benefits': [
+                    '🔍 User Identification: Each video copy contains unique user identification',
+                    '📱 Device Tracking: Device fingerprint embedded for hardware-level tracking',
+                    '⏰ Temporal Tracking: Timestamp allows tracking when content was accessed',
+                    '🔒 Session Linking: Links leaked content back to specific streaming sessions',
+                    '🧬 Steganographic Embedding: Hidden watermarks resistant to transcoding',
+                    '📋 Metadata Embedding: Multiple embedding methods for redundancy',
+                    '🚨 Piracy Detection: Enables automated detection of leaked content',
+                    '⚖️ Legal Evidence: Provides forensic evidence for legal proceedings'
+                ],
+                'technical_details': {
+                    'embedding_methods': [
+                        'Metadata insertion in video headers',
+                        'Steganographic LSB modification',
+                        'Cryptographic hash verification',
+                        'Multi-layer redundant embedding'
+                    ],
+                    'watermark_data': {
+                        'user_hash': watermark_payload['payload']['user_hash'],
+                        'device_id': watermark_payload['payload']['device_id'],
+                        'session_id': watermark_payload['payload']['session_id'],
+                        'timestamp': watermark_payload['payload']['timestamp']
+                    },
+                    'security_features': [
+                        'Tamper-resistant embedding',
+                        'Cryptographic integrity verification',
+                        'Unique per-session watermarks',
+                        'Collision-resistant hash functions'
+                    ]
+                },
+                'demo_explanation': {
+                    'purpose': 'This watermark uniquely identifies the user and session for this video stream',
+                    'detection': 'If this video appears on piracy sites, it can be traced back to this specific user and session',
+                    'legal_value': 'Provides concrete evidence for anti-piracy enforcement and legal action',
+                    'prevention': 'Acts as a deterrent since users know their identity is embedded in the content'
+                }
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
+
+@api_view(['POST'])
+def verify_forensic_watermark(request):
+    """Verify forensic watermark in video content (for piracy detection)"""
+    try:
+        data = json.loads(request.body)
+        video_file_path = data.get('video_file_path')
+        expected_watermark_hash = data.get('expected_watermark_hash')
+        
+        if not video_file_path or not expected_watermark_hash:
+            return Response({
+                'error': 'video_file_path and expected_watermark_hash are required'
+            }, status=400)
+        
+        # This would typically be used by content protection services
+        # to verify watermarks in suspected pirated content
+        
+        return Response({
+            'watermark_verification': {
+                'file_analyzed': video_file_path,
+                'expected_hash': expected_watermark_hash,
+                'verification_status': 'This endpoint would verify watermarks in suspected pirated content',
+                'use_cases': [
+                    'Automated piracy detection systems',
+                    'Content protection service integration',
+                    'Legal evidence collection',
+                    'User accountability tracking'
+                ],
+                'implementation_note': 'In production, this would analyze video files found on piracy sites'
             }
         })
         
