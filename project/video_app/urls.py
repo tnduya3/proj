@@ -20,4 +20,5 @@ urlpatterns = [
     path('api/demo/encryption/<int:video_id>/', views.show_encryption_demo, name='encryption_demo'),
     path('api/demo/security/<str:session_id>/', views.show_session_security, name='session_security'),
     path('api/demo/protection/', views.show_piracy_protection_demo, name='protection_demo'),
+    path('api/demo/jwt-security/', views.demo_jwt_security, name='jwt_security_demo'),
 ]

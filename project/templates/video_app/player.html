@@ -184,6 +184,7 @@
                 <button onclick="showEncryptionDemo()" id="demoBtn">🔒 Show Encryption Demo</button>
                 <button onclick="showSessionSecurity()" id="securityBtn" disabled>📊 Show Session Security</button>
                 <button onclick="showProtectionDemo()" id="protectionBtn">🛡️ Anti-Piracy Demo</button>
+                <button onclick="showJwtSecurityDemo()" id="jwtBtn">🔑 JWT Security Demo</button>
                 <button onclick="clearLogs()" id="clearBtn">Clear Logs</button>
             </div>
             
@@ -630,6 +631,68 @@
                 }
             }
             
+            // Show JWT security demonstration
+            async showJwtSecurityDemo() {
+                try {
+                    const response = await fetch('/api/demo/jwt-security/');
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        const demo = data.jwt_security_demonstration;
+                        
+                        this.log('🔑 JWT SECURITY DEMONSTRATION', null);
+                        this.log('='.repeat(70), null);
+                        
+                        // JWT Secret Analysis
+                        this.log('JWT SECRET KEY ANALYSIS:', null);
+                        this.log(`• Secret Length: ${demo.current_jwt_secret_length} characters`, null);
+                        this.log(`• Security Level: ${demo.current_jwt_secret_strength}`, null);
+                        
+                        this.log('-'.repeat(70), null);
+                        
+                        // Token Generation Demo
+                        this.log('TOKEN GENERATION WITH DIFFERENT SECRETS:', null);
+                        this.log(`• Current Secret Token: ${demo.tokens_generated.with_current_secret}`, null);
+                        this.log(`• Weak Secret Token: ${demo.tokens_generated.with_weak_secret}`, null);
+                        this.log(`• Different Secret Token: ${demo.tokens_generated.with_different_secret}`, null);
+                        
+                        this.log('-'.repeat(70), null);
+                        
+                        // Verification Tests
+                        this.log('TOKEN VERIFICATION TESTS:', null);
+                        Object.entries(demo.verification_tests).forEach(([test, result]) => {
+                            this.log(`• ${test.replace(/_/g, ' ')}: ${result}`, null);
+                        });
+                        
+                        this.log('-'.repeat(70), null);
+                        
+                        // Security Explanation
+                        this.log('SECURITY EXPLANATION:', null);
+                        Object.entries(demo.security_explanation).forEach(([key, value]) => {
+                            this.log(`• ${key.replace(/_/g, ' ')}: ${value}`, null);
+                        });
+                        
+                        this.log('-'.repeat(70), null);
+                        
+                        // Recommendations
+                        this.log('SECURITY RECOMMENDATIONS:', null);
+                        demo.recommendations.forEach((recommendation, index) => {
+                            this.log(`${index + 1}. ${recommendation}`, null);
+                        });
+                        
+                        this.log('='.repeat(70), null);
+                        this.log('🔐 JWT tokens are only secure with strong, random secret keys!', null);
+                        
+                        this.updateStatus('JWT security demonstration completed!', 'success');
+                    } else {
+                        throw new Error(data.error || 'Failed to load JWT security demo');
+                    }
+                } catch (error) {
+                    this.log('Failed to show JWT security demo', error.message, 'error');
+                    this.updateStatus(`Error: ${error.message}`, 'error');
+                }
+            }
+            
             // ...existing code...
         }
         
@@ -658,9 +721,16 @@
         function showSessionSecurity() {
             secureStreaming.showSessionSecurity();
         }
-        
-        function showProtectionDemo() {
+          function showProtectionDemo() {
             secureStreaming.showProtectionDemo();
+        }
+        
+        function showJwtSecurityDemo() {
+            secureStreaming.showJwtSecurityDemo();
+        }
+        
+        function showJwtSecurityDemo() {
+            secureStreaming.showJwtSecurityDemo();
         }
         
         // Load available videos

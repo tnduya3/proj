@@ -428,3 +428,87 @@ def show_piracy_protection_demo(request):
         
     except Exception as e:
         return Response({'error': str(e)}, status=400)
+
+@api_view(['GET'])
+def demo_jwt_security(request):
+    """Demonstrate JWT security with different secret keys"""
+    try:
+        from django.conf import settings
+        import jwt
+        from datetime import datetime, timedelta
+        
+        # Sample payload
+        payload = {
+            'device_fingerprint': 'demo-device-123',
+            'iat': datetime.utcnow(),
+            'exp': datetime.utcnow() + timedelta(minutes=5)
+        }
+        
+        # Generate tokens with different secret keys
+        current_secret = settings.JWT_SECRET_KEY
+        weak_secret = "weak123"
+        another_secret = secrets.token_urlsafe(64)
+        
+        # Create tokens
+        token_with_current_secret = jwt.encode(payload, current_secret, algorithm='HS256')
+        token_with_weak_secret = jwt.encode(payload, weak_secret, algorithm='HS256')
+        token_with_different_secret = jwt.encode(payload, another_secret, algorithm='HS256')
+        
+        # Try to verify with wrong keys
+        verification_results = {}
+        
+        # Test current secret
+        try:
+            jwt.decode(token_with_current_secret, current_secret, algorithms=['HS256'])
+            verification_results['current_secret_with_current_token'] = 'VALID ✅'
+        except:
+            verification_results['current_secret_with_current_token'] = 'INVALID ❌'
+            
+        # Test weak secret
+        try:
+            jwt.decode(token_with_weak_secret, weak_secret, algorithms=['HS256'])
+            verification_results['weak_secret_with_weak_token'] = 'VALID ✅ (but weak)'
+        except:
+            verification_results['weak_secret_with_weak_token'] = 'INVALID ❌'
+            
+        # Test cross-verification (should fail)
+        try:
+            jwt.decode(token_with_current_secret, weak_secret, algorithms=['HS256'])
+            verification_results['weak_secret_with_current_token'] = 'VALID ✅ (SECURITY BREACH!)'
+        except:
+            verification_results['weak_secret_with_current_token'] = 'INVALID ❌ (Good!)'
+            
+        try:
+            jwt.decode(token_with_current_secret, another_secret, algorithms=['HS256'])
+            verification_results['different_secret_with_current_token'] = 'VALID ✅ (SECURITY BREACH!)'
+        except:
+            verification_results['different_secret_with_current_token'] = 'INVALID ❌ (Good!)'
+        
+        return Response({
+            'jwt_security_demonstration': {
+                'current_jwt_secret_length': len(current_secret),
+                'current_jwt_secret_strength': '🔒 Strong' if len(current_secret) >= 64 else '⚠️ Weak',
+                'tokens_generated': {
+                    'with_current_secret': token_with_current_secret[:50] + '...',
+                    'with_weak_secret': token_with_weak_secret[:50] + '...',
+                    'with_different_secret': token_with_different_secret[:50] + '...'
+                },
+                'verification_tests': verification_results,
+                'security_explanation': {
+                    'jwt_security': 'JWT tokens are only valid when verified with the same secret key used to create them',
+                    'secret_importance': 'The secret key is critical - anyone with the secret can create valid tokens',
+                    'random_generation': 'Random secrets prevent attackers from guessing or brute-forcing',
+                    'key_rotation': 'Regularly changing secrets invalidates all existing tokens (security feature)'
+                },
+                'recommendations': [
+                    'Use cryptographically secure random secret keys (64+ characters)',
+                    'Store secrets as environment variables, never in code',
+                    'Rotate secrets periodically for enhanced security',
+                    'Use different secrets for different environments (dev/staging/prod)',
+                    'Monitor for unauthorized token usage'
+                ]
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)

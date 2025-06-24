@@ -10,7 +10,13 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
+import sys
+import secrets
 from pathlib import Path
+
+# Add the video_app to the path for importing security utilities
+sys.path.append(str(Path(__file__).resolve().parent.parent / 'video_app'))
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -133,13 +139,27 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Video streaming settings
 VIDEO_SEGMENT_DURATION = 10  # seconds
 DH_KEY_SIZE = 2048
-JWT_SECRET_KEY = 'your-secret-key-for-jwt'
+
+# JWT Configuration with secure random key generation
+JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
+if not JWT_SECRET_KEY:
+    # Generate a cryptographically secure random key (512 bits of entropy)
+    JWT_SECRET_KEY = secrets.token_urlsafe(64)
+    print(f"🔑 Generated new JWT_SECRET_KEY for this session: {JWT_SECRET_KEY}")
+    print("📝 For production, set this as JWT_SECRET_KEY environment variable")
+
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_MINUTES = 5
 
+# Security validation
+if len(JWT_SECRET_KEY) < 32:
+    raise ValueError("⚠️  SECURITY ERROR: JWT_SECRET_KEY must be at least 32 characters long!")
+elif len(JWT_SECRET_KEY) < 64:
+    print("ℹ️  INFO: JWT secret meets minimum requirements. Consider using 64+ characters for production.")
+else:
+    print("✅ JWT secret key meets security requirements.")
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
